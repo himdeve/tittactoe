@@ -4,5 +4,4 @@
     <string name="send_request">Send gRPC Request</string>
     <string name="app_label">gRPC Kotlin Android</string>
     <string name="server_response">Server response: </string>
-    <string name="server_url">https://2704-77-242-92-113.eu.ngrok.io</string>
 </resources>
