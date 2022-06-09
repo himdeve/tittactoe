@@ -1,5 +1,6 @@
 package io.grpc.examples.helloworld
 
+import SpeedTacToeGrpcKt
 import android.net.Uri
 import android.os.Bundle
 import androidx.activity.compose.setContent
@@ -14,25 +15,25 @@ import androidx.compose.material.MaterialTheme
 import androidx.compose.material.OutlinedTextField
 import androidx.compose.material.Surface
 import androidx.compose.material.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
+import gameSearchHandshake
 import io.grpc.ManagedChannelBuilder
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.asExecutor
+import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import java.io.Closeable
+import java.util.*
 
 class MainActivity : AppCompatActivity() {
 
     private val uri by lazy { Uri.parse(resources.getString(R.string.server_url)) }
-    private val greeterService by lazy { GreeterRCP(uri) }
+    private val greeterService by lazy { TicTacToeRcp(uri) }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -50,8 +51,11 @@ class MainActivity : AppCompatActivity() {
     }
 }
 
-class GreeterRCP(uri: Uri) : Closeable {
-    val responseState = mutableStateOf("")
+class TicTacToeRcp(uri: Uri) : Closeable {
+    private val moves = MutableSharedFlow<Game.Move>()
+    val responseState = mutableStateOf<Game.GameFoundHandshake>(Game.GameFoundHandshake.getDefaultInstance())
+    var gameStateFlow = mutableStateOf<Game.GameState>(Game.GameState.getDefaultInstance())
+
 
     private val channel = let {
         println("Connecting to ${uri.host}:${uri.port}")
@@ -66,17 +70,34 @@ class GreeterRCP(uri: Uri) : Closeable {
         builder.executor(Dispatchers.IO.asExecutor()).build()
     }
 
-    private val greeter = GreeterGrpcKt.GreeterCoroutineStub(channel)
+    private val speedTacToe = SpeedTacToeGrpcKt.SpeedTacToeCoroutineStub(channel)
 
-    suspend fun sayHello(name: String) {
+    suspend fun findAndConnect() {
         try {
-            val request = helloRequest { this.name = name }
-            val response = greeter.sayHello(request)
-            responseState.value = response.message
+            val uuid = UUID.randomUUID().toString()
+            val request = gameSearchHandshake { this.clientUuid = uuid }
+            val response = speedTacToe.findGame(request = request)
+            responseState.value = Game.GameFoundHandshake.newBuilder(response).build()
+
+            val responseConnect = speedTacToe.connect(requests = moves)
+            gameStateFlow.value = responseConnect.last()
         } catch (e: Exception) {
-            responseState.value = e.message ?: "Unknown Error"
             e.printStackTrace()
         }
+    }
+
+    fun nextMove() {
+        val position = Game.Position.newBuilder()
+            .setColumn(1)
+            .setRow(1)
+            .build()
+
+        val move = Game.Move.newBuilder()
+            .setGameUuid(responseState.value.gameUuid)
+            .setPosition(position)
+            .build()
+
+        moves.tryEmit(move)
     }
 
     override fun close() {
@@ -85,23 +106,30 @@ class GreeterRCP(uri: Uri) : Closeable {
 }
 
 @Composable
-fun Greeter(greeterRCP: GreeterRCP) {
+fun Greeter(ticTacToeRcp: TicTacToeRcp) {
 
     val scope = rememberCoroutineScope()
 
     val nameState = remember { mutableStateOf(TextFieldValue()) }
 
-    Column(Modifier.fillMaxWidth().fillMaxHeight(), Arrangement.Top, Alignment.CenterHorizontally) {
+    val gameState = ticTacToeRcp.gameStateFlow.value
+
+    LaunchedEffect("key1") {
+        ticTacToeRcp.findAndConnect()
+    }
+
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .fillMaxHeight(), Arrangement.Top, Alignment.CenterHorizontally
+    ) {
         Text(stringResource(R.string.name_hint), modifier = Modifier.padding(top = 10.dp))
         OutlinedTextField(nameState.value, { nameState.value = it })
 
-        Button({ scope.launch { greeterRCP.sayHello(nameState.value.text) } }, Modifier.padding(10.dp)) {
-        Text(stringResource(R.string.send_request))
-    }
-
-        if (greeterRCP.responseState.value.isNotEmpty()) {
-            Text(stringResource(R.string.server_response), modifier = Modifier.padding(top = 10.dp))
-            Text(greeterRCP.responseState.value)
+        Button({ scope.launch { ticTacToeRcp.nextMove() } }, Modifier.padding(10.dp)) {
+            Text(stringResource(R.string.send_request))
         }
+
+        Text(gameState.toString())
     }
 }

@@ -20,6 +20,7 @@ message GameFoundHandshake {
 message Move {
   string gameUuid = 1;
   Position position = 2;
+  string clientUuid = 3;
 }
 
 message Position {

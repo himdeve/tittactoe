@@ -36,7 +36,7 @@ android {
         if (serverUrl != null) {
             resValue("string", "server_url", serverUrl!!)
         } else {
-            resValue("string", "server_url", "https://2704-77-242-92-113.eu.ngrok.io:8080")
+            resValue("string", "server_url", "http://2704-77-242-92-113.eu.ngrok.io:8080")
         }
     }
 
